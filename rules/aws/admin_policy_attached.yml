@@ -1,0 +1,41 @@
+title: Administrator policy attached to an IAM principal
+id: 4f81b6e3-5c27-4a90-8d13-6b9e02c7a5d8
+status: experimental
+description: >
+  Attaching AdministratorAccess (or any policy granting a bare wildcard) to a
+  user, role or group is how a foothold becomes account-wide control. The
+  action is legitimate but should be rare and deliberate, which makes it a
+  good high-fidelity privilege-escalation signal in CloudTrail.
+references:
+  - https://attack.mitre.org/techniques/T1098/003/
+author: Jampani Komal
+date: 2026/09/22
+tags:
+  - attack.privilege_escalation
+  - attack.persistence
+  - attack.t1098.003
+logsource:
+  product: aws
+  service: cloudtrail
+  index: aws
+  sourcetype: aws:cloudtrail
+detection:
+  selection:
+    eventSource: 'iam.amazonaws.com'
+    eventName:
+      - 'AttachUserPolicy'
+      - 'AttachRolePolicy'
+      - 'AttachGroupPolicy'
+    requestParameters.policyArn|contains:
+      - 'AdministratorAccess'
+      - 'PowerUserAccess'
+      - 'IAMFullAccess'
+  read_only_failure:
+    errorCode|contains:
+      - 'AccessDenied'
+      - 'Unauthorized'
+  condition: selection and not read_only_failure
+falsepositives:
+  - Account bootstrap or landing-zone automation run by a known deployment
+    role; match on the invoking principal, not on the event alone.
+level: high

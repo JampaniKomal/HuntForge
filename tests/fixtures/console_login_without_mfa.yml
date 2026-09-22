@@ -1,0 +1,59 @@
+rule: rules/aws/console_login_without_mfa.yml
+true_positives:
+  - name: IAM user signs in with a password only
+    event:
+      eventSource: signin.amazonaws.com
+      eventName: ConsoleLogin
+      sourceIPAddress: 203.0.113.44
+      userIdentity:
+        type: IAMUser
+        userName: deploy-bot
+      responseElements:
+        ConsoleLogin: Success
+      additionalEventData:
+        MFAUsed: 'No'
+        MobileVersion: 'No'
+  - name: root login without MFA
+    event:
+      eventSource: signin.amazonaws.com
+      eventName: ConsoleLogin
+      userIdentity:
+        type: Root
+      responseElements:
+        ConsoleLogin: Success
+      additionalEventData:
+        MFAUsed: 'No'
+true_negatives:
+  - name: MFA was used
+    event:
+      eventSource: signin.amazonaws.com
+      eventName: ConsoleLogin
+      userIdentity:
+        type: IAMUser
+        userName: k.jampani
+      responseElements:
+        ConsoleLogin: Success
+      additionalEventData:
+        MFAUsed: 'Yes'
+  - name: failed login attempt
+    event:
+      eventSource: signin.amazonaws.com
+      eventName: ConsoleLogin
+      userIdentity:
+        type: IAMUser
+        userName: deploy-bot
+      responseElements:
+        ConsoleLogin: Failure
+      additionalEventData:
+        MFAUsed: 'No'
+  - name: federated SSO session, where MFA was enforced upstream
+    event:
+      eventSource: signin.amazonaws.com
+      eventName: ConsoleLogin
+      userIdentity:
+        type: AssumedRole
+        arn: arn:aws:sts::111122223333:assumed-role/SSO_Engineer/k.jampani
+      responseElements:
+        ConsoleLogin: Success
+      additionalEventData:
+        MFAUsed: 'No'

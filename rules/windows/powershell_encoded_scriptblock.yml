@@ -1,0 +1,41 @@
+title: PowerShell script block with in-memory execution or encoded payload
+id: 1d5e8b2a-6c94-4f73-b1a2-9e3c7d045f61
+status: experimental
+description: >
+  Script Block Logging (event 4104) records the deobfuscated body of every
+  PowerShell script block before it executes, which is what makes it the
+  reliable place to catch fileless execution. This rule fires on the
+  combination that legitimate administrative scripts rarely need: downloading
+  or decoding a payload and executing it straight from memory.
+references:
+  - https://attack.mitre.org/techniques/T1059/001/
+  - https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_logging_windows
+author: Jampani Komal
+date: 2026/09/22
+tags:
+  - attack.execution
+  - attack.defense_evasion
+  - attack.t1059.001
+logsource:
+  product: windows
+  service: powershell
+  index: windows
+  sourcetype: WinEventLog:Microsoft-Windows-PowerShell/Operational
+detection:
+  selection:
+    EventID: 4104
+    ScriptBlockText|contains:
+      - 'FromBase64String'
+      - '-EncodedCommand'
+      - 'Invoke-Expression'
+      - 'IEX ('
+      - 'DownloadString'
+      - 'Net.WebClient'
+  signed_internal_tooling:
+    Path|endswith: '\Modules\PSReadLine\PSReadLine.psm1'
+  condition: selection and not signed_internal_tooling
+falsepositives:
+  - Package managers and deployment tooling that legitimately fetch and
+    evaluate remote scripts; baseline the calling Path before tuning.
+  - Administrator one-liners copied from documentation that use Invoke-Expression.
+level: high

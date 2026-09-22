@@ -1,0 +1,29 @@
+rule: rules/windows/defender_protection_disabled.yml
+true_positives:
+  - name: real-time monitoring switched off
+    event:
+      EventID: 1
+      Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      CommandLine: powershell.exe -c Set-MpPreference -DisableRealtimeMonitoring $true
+      User: CORP\k.jampani
+  - name: staging directory excluded from scanning
+    event:
+      EventID: 1
+      Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      CommandLine: powershell Add-MpPreference -ExclusionPath C:\Users\Public\stage
+true_negatives:
+  - name: Defender preference read, not written
+    event:
+      EventID: 1
+      Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      CommandLine: powershell.exe -c Get-MpPreference | Select DisableRealtimeMonitoring
+  - name: Set-MpPreference tuning an unrelated, non-protection setting
+    event:
+      EventID: 1
+      Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      CommandLine: powershell.exe -c Set-MpPreference -ScanScheduleDay 3
+  - name: exclusion mentioned only in a help lookup
+    event:
+      EventID: 1
+      Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      CommandLine: powershell.exe -c Get-Help Add-MpPreference

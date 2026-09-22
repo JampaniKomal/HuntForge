@@ -1,0 +1,74 @@
+{
+  "name": "HuntForge",
+  "versions": {
+    "attack": "14",
+    "navigator": "4.9.0",
+    "layer": "4.5"
+  },
+  "domain": "enterprise-attack",
+  "description": "Techniques covered by the rules in this repository.",
+  "techniques": [
+    {
+      "techniqueID": "T1059.001",
+      "score": 1,
+      "comment": "PowerShell script block with in-memory execution or encoded payload",
+      "enabled": true
+    },
+    {
+      "techniqueID": "T1078.004",
+      "score": 1,
+      "comment": "Successful AWS console login without MFA",
+      "enabled": true
+    },
+    {
+      "techniqueID": "T1098.003",
+      "score": 1,
+      "comment": "Administrator policy attached to an IAM principal",
+      "enabled": true
+    },
+    {
+      "techniqueID": "T1110",
+      "score": 1,
+      "comment": "Failed network logon for a non-existent account",
+      "enabled": true
+    },
+    {
+      "techniqueID": "T1490",
+      "score": 1,
+      "comment": "Volume shadow copy deletion (ransomware recovery inhibition)",
+      "enabled": true
+    },
+    {
+      "techniqueID": "T1543.003",
+      "score": 1,
+      "comment": "Windows service installed from a user-writable path",
+      "enabled": true
+    },
+    {
+      "techniqueID": "T1562.001",
+      "score": 1,
+      "comment": "Microsoft Defender real-time protection or scanning disabled",
+      "enabled": true
+    },
+    {
+      "techniqueID": "T1562.008",
+      "score": 1,
+      "comment": "CloudTrail logging stopped, deleted or reconfigured",
+      "enabled": true
+    },
+    {
+      "techniqueID": "T1571",
+      "score": 1,
+      "comment": "Outbound connection from a known reverse-shell binary",
+      "enabled": true
+    }
+  ],
+  "gradient": {
+    "colors": [
+      "#ffffff",
+      "#ff6666"
+    ],
+    "minValue": 0,
+    "maxValue": 3
+  }
+}

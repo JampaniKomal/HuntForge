@@ -1,0 +1,38 @@
+rule: rules/windows/failed_logon_nonexistent_account.yml
+true_positives:
+  - name: password spray against an account that does not exist
+    event:
+      EventID: 4625
+      LogonType: 3
+      SubStatus: '0xC0000064'
+      TargetUserName: svc_backup1
+      IpAddress: 203.0.113.44
+      WorkstationName: KALI
+true_negatives:
+  - name: real user mistyped their own password (account exists)
+    event:
+      EventID: 4625
+      LogonType: 3
+      SubStatus: '0xC000006A'
+      TargetUserName: k.jampani
+      IpAddress: 10.10.20.31
+  - name: interactive logon failure at the console, not over the network
+    event:
+      EventID: 4625
+      LogonType: 2
+      SubStatus: '0xC0000064'
+      TargetUserName: administrator
+      IpAddress: 10.10.20.31
+  - name: local loopback service check
+    event:
+      EventID: 4625
+      LogonType: 3
+      SubStatus: '0xC0000064'
+      TargetUserName: healthcheck
+      IpAddress: 127.0.0.1
+  - name: successful logon
+    event:
+      EventID: 4624
+      LogonType: 3
+      TargetUserName: k.jampani
+      IpAddress: 10.10.20.31

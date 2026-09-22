@@ -1,0 +1,41 @@
+rule: rules/aws/admin_policy_attached.yml
+true_positives:
+  - name: AdministratorAccess attached to a user
+    event:
+      eventSource: iam.amazonaws.com
+      eventName: AttachUserPolicy
+      userIdentity:
+        type: IAMUser
+        userName: deploy-bot
+      requestParameters:
+        userName: svc-backup
+        policyArn: arn:aws:iam::aws:policy/AdministratorAccess
+  - name: IAMFullAccess attached to a role
+    event:
+      eventSource: iam.amazonaws.com
+      eventName: AttachRolePolicy
+      requestParameters:
+        roleName: build-runner
+        policyArn: arn:aws:iam::aws:policy/IAMFullAccess
+true_negatives:
+  - name: a scoped, least-privilege policy attachment
+    event:
+      eventSource: iam.amazonaws.com
+      eventName: AttachUserPolicy
+      requestParameters:
+        userName: analyst
+        policyArn: arn:aws:iam::aws:policy/ReadOnlyAccess
+  - name: attempt refused by permission boundary
+    event:
+      eventSource: iam.amazonaws.com
+      eventName: AttachUserPolicy
+      errorCode: AccessDenied
+      requestParameters:
+        userName: svc-backup
+        policyArn: arn:aws:iam::aws:policy/AdministratorAccess
+  - name: policy only listed, not attached
+    event:
+      eventSource: iam.amazonaws.com
+      eventName: ListAttachedUserPolicies
+      requestParameters:
+        userName: analyst

@@ -1,0 +1,38 @@
+title: Failed network logon for a non-existent account
+id: 7f3a1c9e-2b4d-4a61-9e08-5c7d2f1b8a34
+status: experimental
+description: >
+  Windows Security event 4625 with sub-status 0xC0000064 means the account
+  named in the logon attempt does not exist. Over a network logon (type 3)
+  this is the signature of password spraying or user enumeration rather than
+  a user fat-fingering their own password, which produces 0xC000006A
+  (bad password for an account that does exist).
+references:
+  - https://attack.mitre.org/techniques/T1110/
+  - https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4625
+author: Jampani Komal
+date: 2026/09/22
+tags:
+  - attack.credential_access
+  - attack.t1110
+logsource:
+  product: windows
+  service: security
+  index: windows
+  sourcetype: WinEventLog:Security
+detection:
+  selection:
+    EventID: 4625
+    LogonType: 3
+    SubStatus: '0xC0000064'
+  local_noise:
+    IpAddress:
+      - '-'
+      - '127.0.0.1'
+      - '::1'
+  condition: selection and not local_noise
+falsepositives:
+  - A decommissioned service account still referenced by a scheduled task or
+    application configuration, which will retry with the same dead username.
+  - Vulnerability scanners performing authenticated-scan credential checks.
+level: medium

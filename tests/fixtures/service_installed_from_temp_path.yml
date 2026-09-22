@@ -1,0 +1,33 @@
+rule: rules/windows/service_installed_from_temp_path.yml
+true_positives:
+  - name: PsExec-style service dropped into Temp
+    event:
+      EventID: 7045
+      ServiceName: PSEXESVC
+      ServiceFileName: C:\Windows\Temp\PSEXESVC.exe
+      ServiceType: user mode service
+      AccountName: LocalSystem
+  - name: service that shells out to PowerShell
+    event:
+      EventID: 4697
+      ServiceName: UpdaterSvc
+      ServiceFileName: cmd.exe /c powershell -nop -w hidden -enc SQBFAFgA
+      AccountName: LocalSystem
+true_negatives:
+  - name: ordinary service installed under Program Files
+    event:
+      EventID: 7045
+      ServiceName: BackupAgent
+      ServiceFileName: C:\Program Files\Backup\agent.exe
+      AccountName: LocalSystem
+  - name: Defender platform update, the documented exception
+    event:
+      EventID: 7045
+      ServiceName: WinDefend
+      ServiceFileName: C:\ProgramData\Microsoft\Windows Defender\Platform\4.18.2\MsMpEng.exe
+      AccountName: LocalSystem
+  - name: unrelated system event
+    event:
+      EventID: 7036
+      ServiceName: Spooler
+      ServiceFileName: C:\Windows\System32\spoolsv.exe

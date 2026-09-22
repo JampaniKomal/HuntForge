@@ -1,0 +1,35 @@
+rule: rules/aws/cloudtrail_logging_disabled.yml
+true_positives:
+  - name: trail stopped by a compromised role
+    event:
+      eventSource: cloudtrail.amazonaws.com
+      eventName: StopLogging
+      awsRegion: ap-south-1
+      sourceIPAddress: 203.0.113.44
+      userIdentity:
+        type: AssumedRole
+        arn: arn:aws:sts::111122223333:assumed-role/deploy/session
+  - name: trail deleted outright
+    event:
+      eventSource: cloudtrail.amazonaws.com
+      eventName: DeleteTrail
+      awsRegion: ap-south-1
+      requestParameters:
+        name: org-audit-trail
+true_negatives:
+  - name: attempt denied by SCP, so logging is still on
+    event:
+      eventSource: cloudtrail.amazonaws.com
+      eventName: StopLogging
+      errorCode: UnauthorizedOperation
+      awsRegion: ap-south-1
+  - name: read-only trail description
+    event:
+      eventSource: cloudtrail.amazonaws.com
+      eventName: DescribeTrails
+      awsRegion: ap-south-1
+  - name: unrelated service using a similar verb
+    event:
+      eventSource: logs.amazonaws.com
+      eventName: DeleteLogGroup
+      awsRegion: ap-south-1

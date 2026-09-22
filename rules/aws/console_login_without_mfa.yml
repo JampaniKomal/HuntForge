@@ -1,0 +1,40 @@
+title: Successful AWS console login without MFA
+id: 9c4d7f2b-3a85-4e19-b06c-58e2a91d34f7
+status: experimental
+description: >
+  A successful ConsoleLogin where additionalEventData.MFAUsed is "No" means a
+  password alone reached the console. For a long-lived IAM user that is the
+  cheapest credential-stuffing win an attacker can get, and it is the
+  identity-plane equivalent of a single-factor VPN login.
+  Federated SSO sessions report MFAUsed as "No" even when the identity
+  provider enforced MFA upstream, so they are filtered out rather than
+  alerted on.
+references:
+  - https://attack.mitre.org/techniques/T1078/004/
+  - https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference-record-contents.html
+author: Jampani Komal
+date: 2026/09/22
+tags:
+  - attack.initial_access
+  - attack.persistence
+  - attack.t1078.004
+logsource:
+  product: aws
+  service: cloudtrail
+  index: aws
+  sourcetype: aws:cloudtrail
+detection:
+  selection:
+    eventName: 'ConsoleLogin'
+    responseElements.ConsoleLogin: 'Success'
+    additionalEventData.MFAUsed: 'No'
+  federated_session:
+    userIdentity.type:
+      - 'AssumedRole'
+      - 'SAMLUser'
+      - 'WebIdentityUser'
+  condition: selection and not federated_session
+falsepositives:
+  - Break-glass accounts used during an incident, which should be rare,
+    documented, and reviewed anyway.
+level: high

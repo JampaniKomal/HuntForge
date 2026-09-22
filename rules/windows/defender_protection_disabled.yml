@@ -1,0 +1,36 @@
+title: Microsoft Defender real-time protection or scanning disabled
+id: 5b7c3e9a-4d18-42f6-8b05-7e91c6a2d340
+status: experimental
+description: >
+  Turning off real-time monitoring, or carving a directory out of scanning
+  with an exclusion, is a standard staging step before dropping a payload.
+  Both are done through Set-MpPreference or Add-MpPreference, so the process
+  command line is enough to catch it.
+references:
+  - https://attack.mitre.org/techniques/T1562/001/
+author: Jampani Komal
+date: 2026/09/22
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+logsource:
+  product: windows
+  service: sysmon
+  index: windows
+  sourcetype: XmlWinEventLog:Microsoft-Windows-Sysmon/Operational
+detection:
+  disable_realtime:
+    EventID: 1
+    CommandLine|contains|all:
+      - 'Set-MpPreference'
+      - 'DisableRealtimeMonitoring'
+  add_exclusion:
+    EventID: 1
+    CommandLine|contains|all:
+      - 'Add-MpPreference'
+      - 'ExclusionPath'
+  condition: disable_realtime or add_exclusion
+falsepositives:
+  - Build agents and developer machines that exclude a workspace directory to
+    speed up compilation; those should be an approved, documented exception.
+level: high

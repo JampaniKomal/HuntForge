@@ -1,0 +1,45 @@
+title: Volume shadow copy deletion (ransomware recovery inhibition)
+id: 3c9f6d1b-84a2-4e57-9c0d-2b7e5a316f48
+status: experimental
+description: >
+  Ransomware families delete volume shadow copies immediately before or after
+  encryption so that Windows cannot roll the filesystem back. The deletion is
+  usually driven through vssadmin, wmic, wbadmin or bcdedit, and it is a far
+  more reliable signal than the encryption itself: it is loud, it is rare on
+  a healthy endpoint, and it happens early in the chain.
+references:
+  - https://attack.mitre.org/techniques/T1490/
+author: Jampani Komal
+date: 2026/09/22
+tags:
+  - attack.impact
+  - attack.t1490
+logsource:
+  product: windows
+  service: sysmon
+  index: windows
+  sourcetype: XmlWinEventLog:Microsoft-Windows-Sysmon/Operational
+detection:
+  vssadmin:
+    EventID: 1
+    Image|endswith:
+      - '\vssadmin.exe'
+      - '\wmic.exe'
+    CommandLine|contains:
+      - 'delete shadows'
+      - 'shadowcopy delete'
+      - 'shadowstorage'
+  recovery_tampering:
+    EventID: 1
+    Image|endswith:
+      - '\bcdedit.exe'
+      - '\wbadmin.exe'
+    CommandLine|contains:
+      - 'recoveryenabled no'
+      - 'ignoreallfailures'
+      - 'delete catalog'
+  condition: vssadmin or recovery_tampering
+falsepositives:
+  - Backup software pruning its own shadow storage on a schedule; confirm the
+    parent process and the schedule before tuning it out.
+level: critical

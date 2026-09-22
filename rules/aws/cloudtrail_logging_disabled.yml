@@ -1,0 +1,35 @@
+title: CloudTrail logging stopped, deleted or reconfigured
+id: 2e6b9a4d-7f31-4c85-9a62-1d0f8b53e7c9
+status: experimental
+description: >
+  An attacker who reaches the control plane usually blinds it first.
+  StopLogging, DeleteTrail and the destructive variants of UpdateTrail remove
+  the very telemetry a hunt depends on, so this event is both an attack step
+  and a warning that everything after it may be missing.
+references:
+  - https://attack.mitre.org/techniques/T1562/008/
+  - https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-concepts.html
+author: Jampani Komal
+date: 2026/09/22
+tags:
+  - attack.defense_evasion
+  - attack.t1562.008
+logsource:
+  product: aws
+  service: cloudtrail
+  index: aws
+  sourcetype: aws:cloudtrail
+detection:
+  selection:
+    eventSource: 'cloudtrail.amazonaws.com'
+    eventName:
+      - 'StopLogging'
+      - 'DeleteTrail'
+      - 'PutEventSelectors'
+  failed_attempt:
+    errorCode|contains: 'Unauthorized'
+  condition: selection and not failed_attempt
+falsepositives:
+  - Infrastructure-as-code pipelines that recreate trails during a migration;
+    correlate with the deploying role and a change record.
+level: critical

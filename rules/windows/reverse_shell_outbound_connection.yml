@@ -1,0 +1,40 @@
+title: Outbound connection from a known reverse-shell binary
+id: 8a2e4f7c-19b6-4d35-a7e9-0c4b83d15629
+status: experimental
+description: >
+  Sysmon event 3 records the process behind every network connection, which
+  is what turns "an outbound TCP session" into "netcat dialled out". This
+  rule fires when a binary from the netcat family initiates an outbound
+  connection, and deliberately ignores loopback so that local tooling and
+  port tests stay quiet.
+references:
+  - https://attack.mitre.org/techniques/T1571/
+  - https://attack.mitre.org/techniques/T1059/
+author: Jampani Komal
+date: 2026/09/22
+tags:
+  - attack.command_and_control
+  - attack.t1571
+logsource:
+  product: windows
+  service: sysmon
+  index: windows
+  sourcetype: XmlWinEventLog:Microsoft-Windows-Sysmon/Operational
+detection:
+  selection:
+    EventID: 3
+    Initiated: true
+    Image|endswith:
+      - '\nc.exe'
+      - '\nc64.exe'
+      - '\ncat.exe'
+      - '\powercat.ps1'
+  loopback:
+    DestinationIp|startswith:
+      - '127.'
+      - '::1'
+  condition: selection and not loopback
+falsepositives:
+  - Network engineers using netcat for connectivity testing; pair the alert
+    with the user context and the destination before escalating.
+level: high

@@ -1,0 +1,37 @@
+rule: rules/windows/shadow_copy_deletion.yml
+true_positives:
+  - name: vssadmin deleting all shadow copies
+    event:
+      EventID: 1
+      Image: C:\Windows\System32\vssadmin.exe
+      CommandLine: vssadmin.exe delete shadows /all /quiet
+      ParentImage: C:\Users\Public\locker.exe
+      User: CORP\k.jampani
+  - name: wmic shadowcopy delete
+    event:
+      EventID: 1
+      Image: C:\Windows\System32\wbem\WMIC.exe
+      CommandLine: wmic.exe shadowcopy delete
+      ParentImage: C:\Windows\System32\cmd.exe
+  - name: bcdedit disabling recovery
+    event:
+      EventID: 1
+      Image: C:\Windows\System32\bcdedit.exe
+      CommandLine: bcdedit /set {default} recoveryenabled No
+true_negatives:
+  - name: vssadmin listing shadow storage for capacity reporting
+    event:
+      EventID: 1
+      Image: C:\Windows\System32\vssadmin.exe
+      CommandLine: vssadmin list shadows
+      ParentImage: C:\Program Files\Backup\agent.exe
+  - name: unrelated process creation
+    event:
+      EventID: 1
+      Image: C:\Windows\System32\notepad.exe
+      CommandLine: notepad.exe notes.txt
+  - name: network connection event from vssadmin, not a process start
+    event:
+      EventID: 3
+      Image: C:\Windows\System32\vssadmin.exe
+      CommandLine: vssadmin.exe delete shadows /all

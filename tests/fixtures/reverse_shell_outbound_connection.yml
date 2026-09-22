@@ -1,0 +1,39 @@
+rule: rules/windows/reverse_shell_outbound_connection.yml
+true_positives:
+  - name: netcat calling back to an attacker listener
+    event:
+      EventID: 3
+      Initiated: true
+      Image: C:\Users\Public\nc.exe
+      DestinationIp: 203.0.113.44
+      DestinationPort: 4444
+      User: CORP\k.jampani
+  - name: ncat outbound on a web port
+    event:
+      EventID: 3
+      Initiated: true
+      Image: C:\Tools\ncat.exe
+      DestinationIp: 198.51.100.7
+      DestinationPort: 443
+true_negatives:
+  - name: netcat bound to loopback for a local port test
+    event:
+      EventID: 3
+      Initiated: true
+      Image: C:\Tools\nc.exe
+      DestinationIp: 127.0.0.1
+      DestinationPort: 8080
+  - name: inbound connection, not initiated by the host
+    event:
+      EventID: 3
+      Initiated: false
+      Image: C:\Tools\nc.exe
+      DestinationIp: 203.0.113.44
+      DestinationPort: 4444
+  - name: browser traffic
+    event:
+      EventID: 3
+      Initiated: true
+      Image: C:\Program Files\Google\Chrome\Application\chrome.exe
+      DestinationIp: 142.250.183.14
+      DestinationPort: 443

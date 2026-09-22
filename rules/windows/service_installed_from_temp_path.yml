@@ -1,0 +1,42 @@
+title: Windows service installed from a user-writable path
+id: 6d2a8e5f-71c3-4b94-8f26-3a5019bc7e48
+status: experimental
+description: >
+  Service installation is a durable persistence mechanism and a common
+  lateral-movement artefact (PsExec and its clones both leave one). A service
+  whose binary lives in Temp, ProgramData, a user profile or a UNC share is
+  the version worth waking someone for, because legitimate software installs
+  into Program Files or System32.
+references:
+  - https://attack.mitre.org/techniques/T1543/003/
+  - https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4697
+author: Jampani Komal
+date: 2026/09/22
+tags:
+  - attack.persistence
+  - attack.privilege_escalation
+  - attack.t1543.003
+logsource:
+  product: windows
+  service: system
+  index: windows
+  sourcetype: WinEventLog:System
+detection:
+  selection:
+    EventID:
+      - 7045
+      - 4697
+    ServiceFileName|contains:
+      - '\Temp\'
+      - '\ProgramData\'
+      - '\Users\'
+      - '\\'
+      - 'powershell'
+      - 'cmd.exe /c'
+  known_management_agent:
+    ServiceFileName|contains: '\ProgramData\Microsoft\Windows Defender\'
+  condition: selection and not known_management_agent
+falsepositives:
+  - Software distribution agents that stage an installer in ProgramData
+    before registering the service; baseline the publisher and the path.
+level: high
