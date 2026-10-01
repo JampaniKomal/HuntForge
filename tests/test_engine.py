@@ -131,3 +131,23 @@ def test_validator_rejects_broken_rules(overrides, expected):
 def test_rule_exposes_normalised_attack_techniques():
     rule = Rule(path=Path("x.yml"), raw=_minimal_rule(tags=["attack.execution", "attack.t1059.001", "attack.t1490"]))
     assert rule.techniques == ["T1059.001", "T1490"]
+
+
+def test_sigma_wildcards_stay_active_inside_modifiers_and_can_be_escaped():
+    assert match_search(
+        {"CommandLine|contains": "vssadmin*shadows"}, {"CommandLine": "vssadmin.exe delete shadows /all"}
+    )
+    assert match_search({"User": "svc_backup?"}, {"User": "SVC_BACKUP1"})
+    assert not match_search({"User": "svc_backup?"}, {"User": "svc_backup12"})
+    star = "\\" + "*"  # Sigma's escaped star: a literal asterisk
+    assert match_search({"Note|endswith": star}, {"Note": "rated 5*"})
+    assert not match_search({"Note|endswith": star}, {"Note": "rated 5"})
+
+
+def test_a_backslash_before_an_ordinary_character_is_just_a_backslash():
+    bs = "\\"
+    two = bs + bs  # Sigma for one literal backslash
+    assert match_search({"Image|endswith": bs + "nc.exe"}, {"Image": "C:" + bs + "Tools" + bs + "nc.exe"})
+    unc = bs + bs + "server" + bs + "share" + bs + "x.exe"
+    assert match_search({"Path|startswith": two + two}, {"Path": unc})
+    assert not match_search({"Path|startswith": two + two}, {"Path": "C:" + bs + "x.exe"})

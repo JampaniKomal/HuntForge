@@ -1,5 +1,8 @@
 """Field matching for a documented subset of the Sigma detection language.
 
+Values are Sigma patterns (see `pattern.py`): case-insensitive, with ``*`` and
+``?`` wildcards that stay active under contains/startswith/endswith.
+
 The matcher deliberately supports a small, explicit set of field modifiers.
 Anything outside that set raises `UnsupportedModifier` instead of being
 silently ignored, so a rule can never look like it matched when part of its
@@ -9,7 +12,10 @@ logic was dropped.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
+
+from .pattern import parse
 
 SUPPORTED_MODIFIERS = frozenset({"contains", "startswith", "endswith", "re", "all"})
 
@@ -43,29 +49,18 @@ def _compare_scalar(actual: Any, expected: Any, modifier: str | None) -> bool:
     if actual is None:
         return False
 
-    actual_text = _as_text(actual).lower()
-    expected_text = _as_text(expected).lower()
-
-    if modifier == "contains":
-        return expected_text in actual_text
-    if modifier == "startswith":
-        return actual_text.startswith(expected_text)
-    if modifier == "endswith":
-        return actual_text.endswith(expected_text)
     if modifier == "re":
         return re.search(_as_text(expected), _as_text(actual), re.IGNORECASE) is not None
 
-    # Plain equality. Numbers compare as numbers; strings may carry Sigma
-    # wildcards, which become an anchored regex.
-    if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+    # A number compares as a number, so EventID 4104 matches "4104".
+    if modifier is None and isinstance(expected, (int, float)) and not isinstance(expected, bool):
         try:
             return float(actual) == float(expected)
         except (TypeError, ValueError):
             return False
-    if "*" in expected_text or "?" in expected_text:
-        pattern = "^" + re.escape(expected_text).replace(r"\*", ".*").replace(r"\?", ".") + "$"
-        return re.match(pattern, actual_text) is not None
-    return actual_text == expected_text
+
+    # Everything else is a case-insensitive Sigma pattern over the text.
+    return parse(_as_text(expected), modifier).matches(_as_text(actual))
 
 
 def _compare(actual: Any, expected: Any, modifier: str | None) -> bool:
@@ -83,9 +78,7 @@ def _split_key(key: str) -> tuple[str, list[str]]:
     field, *modifiers = key.split("|")
     unknown = set(modifiers) - SUPPORTED_MODIFIERS
     if unknown:
-        raise UnsupportedModifier(
-            f"field '{key}' uses unsupported modifier(s): {', '.join(sorted(unknown))}"
-        )
+        raise UnsupportedModifier(f"field '{key}' uses unsupported modifier(s): {', '.join(sorted(unknown))}")
     return field, modifiers
 
 

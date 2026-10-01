@@ -30,7 +30,7 @@ detection:
       - '\Temp\'
       - '\ProgramData\'
       - '\Users\'
-      - '\\'
+      - '\\\\'          # a UNC path (\\server\share): in Sigma a backslash escapes a backslash
       - 'powershell'
       - 'cmd.exe /c'
   known_management_agent:
