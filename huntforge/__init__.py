@@ -7,7 +7,7 @@ the benign baseline, and the same rule text is translated into Splunk SPL and
 Elastic KQL so what was tested is what an analyst runs.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 from .condition import ConditionError
 from .convert import UnsupportedTranslation, convert, to_kql, to_spl

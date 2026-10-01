@@ -7,3 +7,6 @@ venv/
 .idea/
 *.egg-info/
 .DS_Store
+node_modules/
+package-lock.json
+.ruff_cache/

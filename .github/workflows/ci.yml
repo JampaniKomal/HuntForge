@@ -13,33 +13,91 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
-
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check . && ruff format --check .
 
       - name: Validate rule schema, conditions and modifiers
-        run: python -m huntforge validate
+        run: huntforge validate
 
-      - name: Run engine tests and per-rule fixtures
+      - name: Engine tests and per-rule fixtures
         run: python -m pytest -q
 
       - name: False-positive check against benign baseline telemetry
-        run: python -m huntforge noise
+        run: huntforge noise
 
-      - name: Translate every rule to Splunk SPL
-        run: python -m huntforge convert --target splunk --strict
-
-      - name: Translate every rule to Elastic KQL
-        run: python -m huntforge convert --target elastic --strict
+      - name: Translate every rule to Splunk SPL, Kibana KQL and ES|QL
+        run: |
+          huntforge convert --target splunk --strict > /dev/null
+          huntforge convert --target kql --strict > /dev/null
+          huntforge convert --target esql --strict > /dev/null
 
       - name: Fail if the committed ATT&CK coverage report is stale
-        run: python -m huntforge coverage --check
+        run: huntforge coverage --check
+
+  # Every rule's ES|QL runs on a real Elasticsearch over all fixture and
+  # telemetry events, and must select exactly what the matcher selects.
+  elasticsearch:
+    runs-on: ubuntu-latest
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.1.4
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: "false"
+          ES_JAVA_OPTS: -Xms1g -Xmx1g
+        ports:
+          - 9200:9200
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - run: pip install -e ".[dev]"
+
+      - name: Wait for Elasticsearch
+        run: timeout 180 bash -c 'until curl -fs http://localhost:9200/_cluster/health; do sleep 3; done'
+
+      - name: ES|QL on Elasticsearch agrees with the matcher
+        env:
+          HUNTFORGE_ES_URL: http://localhost:9200
+        run: python -m pytest tests/test_elasticsearch.py -v
+
+  # Every rule's KQL is parsed with Kibana's own grammar (pinned commit) and
+  # evaluated over the same events; it must select exactly what the matcher does.
+  kibana-kql:
+    runs-on: ubuntu-latest
+    env:
+      KIBANA_GRAMMAR: https://raw.githubusercontent.com/elastic/kibana/1623175defbc05beb2c833d3f85730c82d38d655/src/platform/packages/shared/kbn-es-query/src/kuery/grammar/grammar.peggy
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install
+        run: |
+          pip install -e .
+          npm install --no-save peggy@4
+          curl -fsSL "$KIBANA_GRAMMAR" -o "$RUNNER_TEMP/grammar.peggy"
+
+      - name: KQL parsed by Kibana's grammar agrees with the matcher
+        run: |
+          python scripts/kql_cases.py > "$RUNNER_TEMP/cases.json"
+          node scripts/kql_check.mjs "$RUNNER_TEMP/grammar.peggy" "$RUNNER_TEMP/cases.json"

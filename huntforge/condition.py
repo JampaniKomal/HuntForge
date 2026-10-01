@@ -20,7 +20,8 @@ implementations drifting apart.
 from __future__ import annotations
 
 import re
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 TOKEN_RE = re.compile(r"\(|\)|\b(?:and|or|not)\b|[A-Za-z_][A-Za-z0-9_]*")
 KEYWORDS = ("and", "or", "not", "(", ")")
@@ -60,7 +61,7 @@ class _Parser:
     def parse(self, leaf, and_, or_, not_):
         value = self.expression(leaf, and_, or_, not_)
         if self.peek() is not None:
-            raise ConditionError(f"trailing tokens in condition: {self.tokens[self.pos:]}")
+            raise ConditionError(f"trailing tokens in condition: {self.tokens[self.pos :]}")
         return value
 
     def expression(self, leaf, and_, or_, not_):

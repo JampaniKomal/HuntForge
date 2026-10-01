@@ -1,5 +1,7 @@
 # HuntForge
 
+[![detection-as-code](https://github.com/JampaniKomal/HuntForge/actions/workflows/ci.yml/badge.svg)](https://github.com/JampaniKomal/HuntForge/actions/workflows/ci.yml)
+
 Detection-as-code for threat hunting: a rule pack that is **tested like
 software**, plus the engine that makes that possible.
 
@@ -16,7 +18,9 @@ rules/*.yml ──► validate ──► test (true positives / true negatives)
                    │             │
                    │             └─► noise check against a benign baseline
                    │
-                   └─► convert ──► Splunk SPL  /  Elastic KQL
+                   ├─► convert ──► Splunk SPL / Kibana KQL / ES|QL
+                   │                 └─► checked against a real Elasticsearch
+                   │                     and Kibana's own KQL grammar
                    └─► coverage ─► ATT&CK table + Navigator layer
 ```
 
@@ -35,25 +39,29 @@ Three problems, one workflow:
    coverage is derived from the rules rather than maintained in a slide.
 
 And because a hunt is useless if it cannot run where the data lives, the same
-rule text translates into Splunk SPL and Elastic KQL — so what CI tested is
-what the analyst pastes into the SIEM.
+rule text translates into Splunk SPL, Kibana KQL and Elasticsearch ES|QL.
+CI does not just check that a query is produced: it runs the ES|QL on a real
+Elasticsearch and parses the KQL with Kibana's own grammar, and both must
+select exactly the events the rule selects here. See
+[Translating to a SIEM](#translating-to-a-siem).
 
 ## Quickstart
 
 ```bash
 git clone https://github.com/JampaniKomal/HuntForge
 cd HuntForge
-pip install -r requirements.txt
+pip install -e .
 
-python -m huntforge validate                          # schema, conditions, modifiers
-python -m huntforge test                              # per-rule fixtures
-python -m huntforge noise                             # false positives vs benign baseline
-python -m huntforge hunt telemetry/windows-endpoint.ndjson
-python -m huntforge convert --target splunk
-python -m huntforge coverage
+huntforge validate                          # schema, conditions, modifiers
+huntforge test                              # per-rule fixtures
+huntforge noise                             # false positives vs benign baseline
+huntforge hunt telemetry/windows-endpoint.ndjson
+huntforge convert --target splunk           # or kql, esql
+huntforge coverage
 ```
 
-Hunting the bundled endpoint capture reconstructs the whole intrusion:
+(`python -m huntforge ...` works too.) Hunting the bundled endpoint capture
+reconstructs the whole intrusion:
 
 ```
 Ran 9 rule(s) over 11 event(s) from telemetry/windows-endpoint.ndjson.
@@ -62,6 +70,8 @@ Ran 9 rule(s) over 11 event(s) from telemetry/windows-endpoint.ndjson.
 
 [     CRITICAL] Volume shadow copy deletion (ransomware recovery inhibition)
                 ATT&CK: T1490  (event #8)
+[     CRITICAL] Volume shadow copy deletion (ransomware recovery inhibition)
+                ATT&CK: T1490  (event #9)
 [         HIGH] Microsoft Defender real-time protection or scanning disabled
                 ATT&CK: T1562.001  (event #5)
 [         HIGH] Outbound connection from a known reverse-shell binary
@@ -72,6 +82,8 @@ Ran 9 rule(s) over 11 event(s) from telemetry/windows-endpoint.ndjson.
                 ATT&CK: T1543.003  (event #6)
 [       MEDIUM] Failed network logon for a non-existent account
                 ATT&CK: T1110  (event #0)
+[       MEDIUM] Failed network logon for a non-existent account
+                ATT&CK: T1110  (event #1)
 ```
 
 The same pack, pointed at the CloudTrail capture, recovers the cloud chain:
@@ -80,10 +92,10 @@ CloudTrail stopped to blind the account.
 
 ## The rule pack
 
-Nine rules across endpoint, network, identity and cloud telemetry. See
-[ATTACK_COVERAGE.md](ATTACK_COVERAGE.md) (generated) for the live table and
-[attack-navigator-layer.json](attack-navigator-layer.json) for the Navigator
-layer.
+Nine rules across endpoint, network, identity and cloud telemetry, with 47
+fixture cases. See [ATTACK_COVERAGE.md](ATTACK_COVERAGE.md) (generated) for
+the live table and [attack-navigator-layer.json](attack-navigator-layer.json)
+for the Navigator layer.
 
 | Rule | Telemetry | ATT&CK |
 |---|---|---|
@@ -111,15 +123,68 @@ detection:
   condition: selection and not local_noise
 ```
 
+## Translating to a SIEM
+
+`huntforge convert --target splunk|kql|esql` renders every rule from the same
+parsed values the matcher uses (`huntforge/pattern.py`), with each language's
+own quoting and escaping. The reverse-shell rule, for example:
+
+```
+# Splunk SPL
+index="windows" sourcetype="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational" ((EventID=3 AND Initiated="true" AND (Image="*\\nc.exe" OR Image="*\\nc64.exe" OR Image="*\\ncat.exe" OR Image="*\\powercat.ps1")) AND NOT ((DestinationIp="127.*" OR DestinationIp="::1*")))
+
+# Kibana KQL
+((EventID: 3 and Initiated: true and (Image: *\\nc.exe or Image: *\\nc64.exe or Image: *\\ncat.exe or Image: *\\powercat.ps1)) and not ((DestinationIp: 127.* or DestinationIp: \:\:1*)))
+
+# ES|QL (abridged)
+FROM windows | WHERE ((COALESCE(EventID == 3, false) AND ... COALESCE(TO_LOWER(Image) LIKE """*\\nc.exe""", false) ...
+```
+
+How each translation is checked, in CI, against all 79 fixture and telemetry
+events (every rule against every event, not just its own):
+
+| Target | Check | Result |
+|---|---|---|
+| ES\|QL | run on Elasticsearch 9.1 ([tests/test_elasticsearch.py](tests/test_elasticsearch.py)) | 9/9 rules select exactly what the matcher selects |
+| Kibana KQL | parsed with Kibana's own grammar at a pinned commit, then evaluated ([scripts/kql_check.mjs](scripts/kql_check.mjs)) | 9/9 |
+| Splunk SPL | escaping and structure unit tests | not run on Splunk (no free CI image) |
+
+**Why this matters: version 1.0's translations were wrong for most rules,**
+and its tests could not tell, because they only checked that a query
+contained certain text.
+
+- Its KQL put wildcard values in quotes (`Image: "*\nc.exe"`). In KQL a
+  quoted `*` is a literal asterisk, and an unescaped backslash starts an
+  escape sequence (`\n` is a newline). Run through Kibana's grammar, **6 of
+  the 9 rules missed the attacks in their own fixtures**, and a seventh
+  (CloudTrail logging) fired on the denied attempt it exists to ignore,
+  because its exclusion could never match.
+- Its SPL used `where like(lower(field), ...)`, in which `_` is a wildcard,
+  backslashes were not escaped, dotted field names were not quoted, and
+  `NOT` over a missing field dropped the event instead of matching it.
+
+Version 1.1 follows each language's rules: KQL wildcards unquoted with
+`\():<>"*{}` and the words `or`/`and`/`not` escaped, SPL as search-command
+syntax (`field="*value*"`, case-insensitive, backslashes doubled), ES|QL with
+`TO_LOWER` and `LIKE` for case-insensitive matching and `COALESCE` so that a
+missing field behaves as it does in the matcher.
+
+One more thing the testing found: **Elasticsearch's own KQL parser** (the
+`kql` query, which is not what Kibana uses) reads backslashes in unquoted
+wildcard values differently from Kibana: `Image: *Public\\*` finds nothing
+there on a document whose `Image` is `C:\Users\Public\nc.exe`. HuntForge
+targets Kibana's grammar, and checks KQL with it.
+
 ## How the engine works
 
 | Module | Job |
 |---|---|
-| `huntforge/matcher.py` | Field comparison: modifiers, wildcards, dotted paths into nested records (CloudTrail), list-valued fields |
+| `huntforge/pattern.py` | Sigma values as patterns: `*` and `?` wildcards, backslash escapes, the contains/startswith/endswith modifiers. Shared by the matcher and every target |
+| `huntforge/matcher.py` | Field comparison: modifiers, numbers, dotted paths into nested records (CloudTrail), list-valued fields |
 | `huntforge/condition.py` | Tokenizer and recursive-descent parser for `condition`, written as a fold so evaluation and query translation share one implementation |
 | `huntforge/rule.py` | Schema validation and rule objects |
 | `huntforge/testkit.py` | Fixture-driven rule tests and the benign-baseline noise check |
-| `huntforge/convert.py` | SPL and KQL rendering |
+| `huntforge/convert.py` | SPL, KQL and ES\|QL rendering |
 | `huntforge/coverage.py` | ATT&CK table and Navigator layer |
 | `huntforge/cli.py` | The commands above, each exiting non-zero on failure so CI can gate on them |
 
@@ -136,9 +201,12 @@ than the rule says.**
 - A search identifier the condition never references, or one it references
   but never defines, fails validation — that mismatch is how half-edited
   rules end up matching everything.
-- KQL has no regex operator, so a rule using `|re` refuses to translate to
-  Elastic instead of emitting a looser query that would quietly mean
-  something else.
+- A fixture without at least one true positive and one true negative fails:
+  a rule that has never been shown to stay quiet has not been tested.
+- A value a target cannot express exactly raises `UnsupportedTranslation`
+  instead of emitting a looser query: regular expressions (all three targets),
+  the `?` wildcard (Splunk, KQL), a literal `*` (Splunk), whitespace at the
+  ends of a KQL wildcard value (Kibana trims it).
 
 A rule that refuses to load is an annoyance. A rule that loads and means
 something other than what it says is an incident nobody sees.
@@ -148,10 +216,10 @@ something other than what it says is an incident nobody sees.
 | Feature | Supported |
 |---|---|
 | Field equality, case-insensitive | yes |
-| `contains`, `startswith`, `endswith`, `re` | yes |
+| `contains`, `startswith`, `endswith`, `re` | yes (`re` only in the offline engine) |
 | `all` modifier (every value must match) | yes |
 | Value lists as OR, field maps as AND | yes |
-| `*` / `?` wildcards (anchored) | yes |
+| `*` / `?` wildcards, also inside modifiers; `\*`, `\?`, `\\` escapes | yes, as in the Sigma specification |
 | `null` (field absent) | yes |
 | Dotted paths into nested JSON | yes |
 | List of maps as an OR of searches | yes |
@@ -160,20 +228,27 @@ something other than what it says is an incident nobody sees.
 | Aggregations (`count() > N`), correlation | no — rejected (see Limitations) |
 | `base64offset`, `utf16`, `cidr` modifiers | no — rejected |
 
+As in Sigma, a backslash only escapes `*`, `?` or another backslash, so
+Windows paths need no escaping (`'\Windows\Temp\'`), and a UNC prefix is
+written `'\\\\'`.
+
 ## CI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and
-pull request, across Python 3.10-3.13:
+pull request:
 
-1. `huntforge validate` — schema, conditions, modifiers
-2. `pytest` — engine unit tests plus every rule's fixtures
-3. `huntforge noise` — the pack must stay silent on the benign baseline
-4. `huntforge convert --target splunk --strict` and `--target elastic`
-5. `huntforge coverage --check` — fails if the committed ATT&CK report is stale
+1. **Python 3.10-3.13:** ruff; `huntforge validate`; `pytest` (engine,
+   pattern and translation tests plus every rule's fixtures); `huntforge
+   noise`; every rule converted to SPL, KQL and ES|QL with `--strict`;
+   `huntforge coverage --check`.
+2. **Elasticsearch:** an Elasticsearch 9.1 service container; every rule's
+   ES|QL must return exactly the matcher's events.
+3. **Kibana KQL:** every rule's KQL parsed with Kibana's grammar must select
+   exactly the matcher's events.
 
-That is the whole point: a pull request that adds a rule cannot merge unless
-the rule is valid, catches its attack, ignores its benign twin, translates to
-both SIEMs, and updates coverage.
+A pull request that adds a rule cannot merge unless the rule is valid,
+catches its attack, ignores its benign twin, stays quiet on the baseline,
+translates to all three languages with the same meaning, and updates coverage.
 
 ## Adding a rule
 
@@ -182,8 +257,21 @@ both SIEMs, and updates coverage.
 2. Write `tests/fixtures/<name>.yml` with at least one true positive and,
    more importantly, the benign cases that must not fire. If you cannot think
    of a benign twin, the rule is probably too broad.
-3. Run `python -m huntforge validate && python -m pytest && python -m huntforge noise`.
-4. Run `python -m huntforge coverage` and commit the regenerated report.
+3. Run `huntforge validate && python -m pytest && huntforge noise`.
+4. Run `huntforge coverage` and commit the regenerated report.
+
+## What changed in 1.1
+
+- Correct SPL and KQL, a new ES|QL target, and CI that runs the translations
+  instead of string-matching them (above).
+- Values follow Sigma's wildcard and escaping rules everywhere, including
+  inside `contains`/`startswith`/`endswith`. That changed one rule: the
+  service rule's UNC-path value `'\\'` meant one backslash under Sigma rules
+  (matching nearly every path), so it is now `'\\\\'`, with a new fixture for
+  a service binary on a network share.
+- Fixtures must have both a true positive and a true negative; `huntforge
+  test` reports the number of cases.
+- An installable package with a `huntforge` command, and ruff in CI.
 
 ## Limitations
 
@@ -200,8 +288,15 @@ none:
 - **Field names are not normalised.** Rules assume the field names of the
   source (`Image`, `CommandLine`, `userIdentity.type`). A real deployment
   would map these through a schema such as ECS or OCSF first.
-- **SPL and KQL translation covers the supported subset only**, and refuses
-  anything it cannot express exactly.
+- **KQL is case-sensitive on keyword fields.** The rules are
+  case-insensitive, and so are SPL and the ES|QL rendering (it lower-cases
+  both sides). A KQL query matches a keyword field case-insensitively only if
+  the field is normalised to lower case; otherwise use the ES|QL output.
+- **The SPL is not run against Splunk in CI**, only checked for structure and
+  escaping; there is no freely usable Splunk image for CI.
+- **ES|QL compares single values.** A multi-valued field (an array) is not
+  matched element by element as it is here; none of the shipped rules depend
+  on one.
 - **The rules are experimental** (`status: experimental`) and tuned against
   a small baseline. Production use means re-tuning against real telemetry.
 
