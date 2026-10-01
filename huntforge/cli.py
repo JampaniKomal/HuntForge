@@ -4,7 +4,7 @@
     python -m huntforge test                        # per-rule true positive / true negative fixtures
     python -m huntforge noise                       # fire the pack at benign telemetry, expect silence
     python -m huntforge hunt telemetry/sysmon.ndjson
-    python -m huntforge convert --target splunk
+    python -m huntforge convert --target splunk     # or kql, esql
     python -m huntforge coverage [--check]          # ATT&CK coverage report, --check fails if stale
 
 Every command exits non-zero on failure so CI can gate a pull request on it.
@@ -59,15 +59,13 @@ def cmd_test(args) -> int:
     rules = _load(args.rules)
     results = run_all(rules, args.fixtures)
     problems = [problem for result in results for problem in result.problems]
-    cases = sum(
-        len(result.missed) + len(result.false_alarms) for result in results
-    )
+    cases = sum(result.cases for result in results)
     for problem in problems:
         print(f"  - {problem}")
     if problems:
         print(f"\n{len(problems)} failing check(s) across {len(rules)} rule(s).")
         return 1
-    print(f"{len(rules)} rule(s) passed their fixtures ({cases} failure(s)).")
+    print(f"{len(rules)} rule(s) passed their fixtures ({cases} cases).")
     return 0
 
 
@@ -115,9 +113,10 @@ def cmd_coverage(args) -> int:
         expected_md = COVERAGE_MD.read_text(encoding="utf-8") if COVERAGE_MD.exists() else ""
         expected_layer = COVERAGE_LAYER.read_text(encoding="utf-8") if COVERAGE_LAYER.exists() else ""
         current_md = markdown_table(rules)
-        stale = current_md.strip() not in expected_md or json.dumps(
-            navigator_layer(rules), indent=2
-        ).strip() not in expected_layer
+        stale = (
+            current_md.strip() not in expected_md
+            or json.dumps(navigator_layer(rules), indent=2).strip() not in expected_layer
+        )
         if stale:
             print("ATT&CK coverage report is stale; run: python -m huntforge coverage", file=sys.stderr)
             return 1
@@ -151,7 +150,9 @@ def build_parser() -> argparse.ArgumentParser:
     hunt_cmd.set_defaults(func=cmd_hunt)
 
     convert_cmd = sub.add_parser("convert", help="translate rules to a SIEM query language")
-    convert_cmd.add_argument("--target", choices=sorted(TARGETS), default="splunk")
+    convert_cmd.add_argument(
+        "--target", choices=sorted(TARGETS), default="splunk", help="splunk, kql (alias elastic) or esql"
+    )
     convert_cmd.add_argument("--strict", action="store_true", help="fail if any rule cannot be translated")
     convert_cmd.set_defaults(func=cmd_convert)
 
