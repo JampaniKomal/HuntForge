@@ -23,9 +23,10 @@ from .rule import Rule
 @dataclass
 class RuleTestResult:
     rule: Rule
-    missed: list[str] = field(default_factory=list)      # true positives that did not fire
+    missed: list[str] = field(default_factory=list)  # true positives that did not fire
     false_alarms: list[str] = field(default_factory=list)  # true negatives that fired
     fixture_path: Path | None = None
+    cases: int = 0
 
     @property
     def ok(self) -> bool:
@@ -35,10 +36,9 @@ class RuleTestResult:
     def problems(self) -> list[str]:
         if self.fixture_path is None:
             return [f"{self.rule.path.name}: no fixture file (every rule must ship tests)"]
-        return (
-            [f"{self.rule.path.name}: missed true positive '{name}'" for name in self.missed]
-            + [f"{self.rule.path.name}: fired on true negative '{name}'" for name in self.false_alarms]
-        )
+        return [f"{self.rule.path.name}: missed true positive '{name}'" for name in self.missed] + [
+            f"{self.rule.path.name}: fired on true negative '{name}'" for name in self.false_alarms
+        ]
 
 
 def fixture_for(rule: Rule, fixtures_dir: Path) -> Path | None:
@@ -53,10 +53,16 @@ def run_rule_tests(rule: Rule, fixtures_dir: Path) -> RuleTestResult:
         return result
 
     fixture = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    for case in fixture.get("true_positives") or []:
+    positives = fixture.get("true_positives") or []
+    negatives = fixture.get("true_negatives") or []
+    result.cases = len(positives) + len(negatives)
+    if not positives or not negatives:
+        # A rule with no true negative has never been shown to stay quiet on anything.
+        result.missed.append("(fixture needs at least one true positive and one true negative)")
+    for case in positives:
         if not rule.matches(case["event"]):
             result.missed.append(case.get("name", "unnamed"))
-    for case in fixture.get("true_negatives") or []:
+    for case in negatives:
         if rule.matches(case["event"]):
             result.false_alarms.append(case.get("name", "unnamed"))
     return result
@@ -64,6 +70,19 @@ def run_rule_tests(rule: Rule, fixtures_dir: Path) -> RuleTestResult:
 
 def run_all(rules: list[Rule], fixtures_dir: Path) -> list[RuleTestResult]:
     return [run_rule_tests(rule, fixtures_dir) for rule in rules]
+
+
+def fixture_and_telemetry_events(fixtures_dir: Path, telemetry_dir: Path) -> list[tuple[str, dict]]:
+    """Every fixture event and every telemetry event, named, for whole-pack comparisons."""
+    events = []
+    for path in sorted(Path(fixtures_dir).glob("*.yml")):
+        fixture = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        for kind in ("true_positives", "true_negatives"):
+            for case in fixture.get(kind) or []:
+                events.append((f"{path.stem} / {kind} / {case.get('name', 'unnamed')}", case["event"]))
+    for path in sorted(Path(telemetry_dir).glob("*.ndjson")):
+        events += [(f"{path.name} #{i}", event) for i, event in enumerate(load_events(path))]
+    return events
 
 
 def noise_check(rules: list[Rule], baseline_path: Path) -> list[tuple[Rule, int]]:
